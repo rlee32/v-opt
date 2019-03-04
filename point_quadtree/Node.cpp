@@ -14,12 +14,12 @@ Node::Node(Node* parent, const Domain& domain
 {
 }
 
-VMove Node::search_perturbation(primitives::point_id_t i
+void Node::search_perturbation(primitives::point_id_t i
     , const std::vector<primitives::point_id_t>& next
     , const DistanceCalculator& dc
-    , primitives::length_t min_old_segment_length) const
+    , primitives::length_t min_old_segment_length
+    , std::vector<VMove>& perturbations) const
 {
-    VMove move;
     for (auto p : m_points)
     {
         if (p == i or next[p] == i)
@@ -30,17 +30,16 @@ VMove Node::search_perturbation(primitives::point_id_t i
         if (min_new_length < min_old_segment_length)
         {
             auto improvement {min_old_segment_length - min_new_length};
-            move.apply({i, p, improvement});
+            perturbations.push_back({i, p, improvement});
         }
     }
     for (const auto& unique_ptr : m_children)
     {
         if (unique_ptr)
         {
-            move.apply(unique_ptr->search_perturbation(i, next, dc, min_old_segment_length));
+            unique_ptr->search_perturbation(i, next, dc, min_old_segment_length, perturbations);
         }
     }
-    return move;
 }
 
 VMove Node::search(primitives::point_id_t i

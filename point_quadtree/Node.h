@@ -66,10 +66,11 @@ public:
         , const DistanceCalculator&
         , const std::vector<primitives::length_t>& next_lengths
         , primitives::length_t old_segments_length) const;
-    VMove search_perturbation(primitives::point_id_t i
+    void search_perturbation(primitives::point_id_t i
         , const std::vector<primitives::point_id_t>& next
         , const DistanceCalculator& dc
-        , primitives::length_t min_old_segment_length) const;
+        , primitives::length_t min_old_segment_length
+        , std::vector<VMove>& perturbations) const;
 
 private:
     Node* m_parent{nullptr};
