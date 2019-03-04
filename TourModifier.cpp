@@ -7,6 +7,18 @@ TourModifier::TourModifier(const std::vector<primitives::point_id_t>& initial_to
     initialize(initial_tour);
 }
 
+void TourModifier::move(const VMove& move)
+{
+    const auto old_adjacents {m_adjacents[move.i]};
+    break_adjacency(move.i, m_adjacents[move.i][0]);
+    break_adjacency(move.i, m_adjacents[move.i][1]);
+    break_adjacency(move.j, m_next[move.j]);
+    create_adjacency(move.i, move.j);
+    create_adjacency(move.i, m_next[move.j]);
+    create_adjacency(old_adjacents[0], old_adjacents[1]);
+    update_next();
+}
+
 primitives::length_t TourModifier::current_length(const DistanceCalculator& dc) const
 {
     primitives::point_id_t current {0};
@@ -79,11 +91,6 @@ primitives::point_id_t TourModifier::get_other(primitives::point_id_t point, pri
     }
 }
 
-void TourModifier::create_adjacency(const Connection& c)
-{
-    create_adjacency(c.a, c.b);
-}
-
 void TourModifier::create_adjacency(primitives::point_id_t point1, primitives::point_id_t point2)
 {
     fill_adjacent(point1, point2);
@@ -100,11 +107,6 @@ void TourModifier::fill_adjacent(primitives::point_id_t point, primitives::point
     {
         m_adjacents[point].back() = new_adjacent;
     }
-}
-
-void TourModifier::break_adjacency(const Connection& c)
-{
-    break_adjacency(c.a, c.b);
 }
 
 void TourModifier::break_adjacency(primitives::point_id_t point1, primitives::point_id_t point2)

@@ -3,6 +3,7 @@
 #include "Connection.h"
 #include "DistanceCalculator.h"
 #include "constants.h"
+#include "VMove.h"
 #include "primitives.h"
 
 #include <algorithm>
@@ -24,6 +25,7 @@ public:
 
     primitives::length_t current_length(const DistanceCalculator& dc) const;
     const std::vector<Adjacents>& adjacents() const { return m_adjacents; }
+    void move(const VMove&);
 
 private:
     std::vector<Adjacents> m_adjacents;

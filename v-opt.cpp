@@ -33,10 +33,16 @@ int main(int argc, const char** argv)
     const auto initial_tour_length = tour_modifier.current_length(dc);
     std::cout << "Initial tour length: " << initial_tour_length << std::endl;
 
-    const auto improvements {solver::find_improvements(point_set.x(), point_set.x(), domain
+    const auto improvements {solver::find_improvements(point_set.x(), point_set.y(), domain
         , tour_modifier.next(), tour_modifier.adjacents(), dc)};
-    const auto perturbations {solver::find_perturbations(point_set.x(), point_set.x(), domain
+    const auto perturbations {solver::find_perturbations(point_set.x(), point_set.y(), domain
         , tour_modifier.next(), tour_modifier.adjacents(), dc)};
+
+    if (improvements.size() > 0)
+    {
+        tour_modifier.move(improvements.front());
+        std::cout << "new tour length: " << tour_modifier.current_length(dc) << std::endl;
+    }
     std::cout << "Found " << improvements.size() << " improvements." << std::endl;
     std::cout << "Found " << perturbations.size() << " perturbations." << std::endl;
     std::cout << "Search finished." << std::endl;
