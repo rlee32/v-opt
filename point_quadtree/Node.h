@@ -36,6 +36,8 @@ public:
     void create_child(primitives::quadrant_t, const Domain&
         , primitives::grid_t x, primitives::grid_t y, primitives::depth_t);
 
+    void reset_max_segment_lengths();
+
     primitives::grid_t x() const { return m_x; }
     primitives::grid_t y() const { return m_y; }
     primitives::space_t xmin() const { return m_xmin; }

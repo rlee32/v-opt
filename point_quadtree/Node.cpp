@@ -14,6 +14,18 @@ Node::Node(Node* parent, const Domain& domain
 {
 }
 
+void Node::reset_max_segment_lengths()
+{
+    m_max_segment_length = 0;
+    for (const auto& unique_ptr : m_children)
+    {
+        if (unique_ptr)
+        {
+            unique_ptr->reset_max_segment_lengths();
+        }
+    }
+}
+
 void Node::search_perturbation(primitives::point_id_t i
     , const std::vector<primitives::point_id_t>& next
     , const DistanceCalculator& dc
@@ -126,8 +138,11 @@ void Node::remove_segment(
     const bool need_update {length == m_max_segment_length};
     if (need_update)
     {
-        m_max_segment_length = *std::max_element(std::cbegin(m_segment_lengths)
-            , std::cend(m_segment_lengths));
+        if (m_segment_lengths.size() > 0)
+        {
+            m_max_segment_length = *std::max_element(std::cbegin(m_segment_lengths)
+                , std::cend(m_segment_lengths));
+        }
         for (const auto& unique_ptr : m_children)
         {
             if (unique_ptr)
