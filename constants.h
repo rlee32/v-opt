@@ -13,6 +13,7 @@ constexpr primitives::depth_t max_tree_depth{21}; // maximum quadtree depth / le
 constexpr bool verbose {false};
 constexpr bool write_best {true};
 constexpr bool print_local_optima {true};
-constexpr bool verify {false};
+constexpr bool print_iterations {true};
+constexpr bool verify {true};
 
 } // namespace constants

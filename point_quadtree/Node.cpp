@@ -26,10 +26,25 @@ void Node::reset_max_segment_lengths()
     }
 }
 
-void Node::search_perturbation(primitives::point_id_t i
+void Node::reset_segments()
+{
+    m_max_segment_length = 0;
+    m_segment_lengths.clear();
+    for (const auto& unique_ptr : m_children)
+    {
+        if (unique_ptr)
+        {
+            unique_ptr->reset_segments();
+        }
+    }
+}
+
+void Node::search_perturbation(const primitives::point_id_t i
     , const std::vector<primitives::point_id_t>& next
+    , const std::vector<primitives::length_t>& next_lengths
     , const DistanceCalculator& dc
-    , primitives::length_t min_old_segment_length
+    , const primitives::length_t min_adjacent_length
+    , const primitives::length_t new_adjacent_length
     , std::vector<VMove>& perturbations) const
 {
     for (auto p : m_points)
@@ -38,10 +53,20 @@ void Node::search_perturbation(primitives::point_id_t i
         {
             continue;
         }
-        auto min_new_length {std::min(dc.compute_length(i, p), dc.compute_length(i, next[p]))};
-        if (min_new_length < min_old_segment_length)
+        auto min_new_length
         {
-            auto improvement {min_old_segment_length - min_new_length};
+            std::min(
+                {
+                    dc.compute_length(i, p)
+                    , dc.compute_length(i, next[p])
+                    , new_adjacent_length
+                }
+            )
+        };
+        const auto min_old_length = std::min(min_adjacent_length, next_lengths[p]);
+        if (min_new_length < min_old_length)
+        {
+            auto improvement {min_old_length - min_new_length};
             perturbations.push_back({i, p, improvement});
         }
     }
@@ -49,11 +74,50 @@ void Node::search_perturbation(primitives::point_id_t i
     {
         if (unique_ptr)
         {
-            unique_ptr->search_perturbation(i, next, dc, min_old_segment_length, perturbations);
+            unique_ptr->search_perturbation(i, next, next_lengths, dc, min_adjacent_length, new_adjacent_length, perturbations);
         }
     }
 }
 
+void Node::search_perturbation_lax(const primitives::point_id_t i
+    , const std::vector<primitives::point_id_t>& next
+    , const std::vector<primitives::length_t>& next_lengths
+    , const DistanceCalculator& dc
+    , const primitives::length_t max_adjacent_length
+    , const primitives::length_t new_adjacent_length
+    , std::vector<VMove>& perturbations) const
+{
+    for (auto p : m_points)
+    {
+        if (p == i or next[p] == i)
+        {
+            continue;
+        }
+        auto min_new_length
+        {
+            std::min(
+                {
+                    dc.compute_length(i, p)
+                    , dc.compute_length(i, next[p])
+                    , new_adjacent_length
+                }
+            )
+        };
+        const auto max_old_length = std::max(max_adjacent_length, next_lengths[p]);
+        if (min_new_length < max_old_length)
+        {
+            auto improvement {max_old_length - min_new_length};
+            perturbations.push_back({i, p, improvement});
+        }
+    }
+    for (const auto& unique_ptr : m_children)
+    {
+        if (unique_ptr)
+        {
+            unique_ptr->search_perturbation(i, next, next_lengths, dc, max_adjacent_length, new_adjacent_length, perturbations);
+        }
+    }
+}
 VMove Node::search(primitives::point_id_t i
     , const std::vector<primitives::point_id_t>& next
     , const std::vector<std::array<primitives::point_id_t, 2>>& adjacents
@@ -65,6 +129,57 @@ VMove Node::search(primitives::point_id_t i
     for (auto p : m_points)
     {
         if (p == i or next[p] == i)
+        {
+            continue;
+        }
+        auto reduction {old_segments_length + next_lengths[p]};
+        auto new_length {dc.compute_length(i, p)};
+        if (new_length > reduction)
+        {
+            continue;
+        }
+        new_length += dc.compute_length(i, next[p]);
+        if (new_length > reduction)
+        {
+            continue;
+        }
+        new_length += dc.compute_length(adjacents[i][0], adjacents[i][1]);
+        if (new_length < reduction)
+        {
+            auto improvement {reduction - new_length};
+            move.apply({i, p, improvement});
+        }
+    }
+    for (const auto& unique_ptr : m_children)
+    {
+        if (unique_ptr)
+        {
+            move.apply(unique_ptr->search(
+                i, next, adjacents, dc, next_lengths, old_segments_length));
+        }
+    }
+    return move;
+}
+
+VMove Node::search(primitives::point_id_t i
+    , const std::vector<primitives::point_id_t>& next
+    , const std::vector<std::array<primitives::point_id_t, 2>>& adjacents
+    , const DistanceCalculator& dc
+    , const std::vector<primitives::length_t>& next_lengths
+    , primitives::length_t old_segments_length
+    , const Segment& permanent_segment) const
+{
+    VMove move;
+    for (auto p : m_points)
+    {
+        if (p == i or next[p] == i)
+        {
+            continue;
+        }
+        const bool removes_permanent {permanent_segment.same(p, next[p])
+            or permanent_segment.same(i, adjacents[i][0])
+            or permanent_segment.same(i, adjacents[i][1])};
+        if (removes_permanent)
         {
             continue;
         }
@@ -154,6 +269,12 @@ void Node::remove_segment(
     }
 }
 
+void Node::add_segment(const Segment& s, const std::vector<primitives::morton_key_t>& morton_keys)
+{
+    const auto insertion_path {point_quadtree::morton_keys::segment_insertion_path(morton_keys[s.min], morton_keys[s.max])};
+    add_segment(std::cbegin(insertion_path), std::cend(insertion_path), s.length);
+}
+
 void Node::add_segment(std::vector<primitives::quadrant_t>::const_iterator next_quadrant
     , const std::vector<primitives::quadrant_t>::const_iterator quadrant_end
     , primitives::length_t length)
@@ -205,6 +326,24 @@ const Node* Node::expand(primitives::space_t x, primitives::space_t y
     auto margin_dy {std::min(y - m_ymin, m_ymax - y)};
     auto margin_sq {margin_dx * margin_dx + margin_dy * margin_dy};
     auto min_radius {old_segments_length + m_max_segment_length};
+    if (margin_sq >= min_radius * min_radius)
+    {
+        return this;
+    }
+    return m_parent->expand(x, y, min_radius);
+}
+
+const Node* Node::expand_simple(primitives::space_t x, primitives::space_t y
+    , primitives::space_t min_radius) const
+{
+    if (not m_parent)
+    {
+        return this;
+    }
+    // Assumption: x, y is inside the current node.
+    auto margin_dx {std::min(x - m_xmin, m_xmax - x)};
+    auto margin_dy {std::min(y - m_ymin, m_ymax - y)};
+    auto margin_sq {margin_dx * margin_dx + margin_dy * margin_dy};
     if (margin_sq >= min_radius * min_radius)
     {
         return this;

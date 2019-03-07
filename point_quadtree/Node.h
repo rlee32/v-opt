@@ -5,6 +5,7 @@
 #include "VMove.h"
 #include "morton_keys.h"
 #include <DistanceCalculator.h>
+#include <Segment.h>
 #include <primitives.h>
 
 #include <algorithm> // min, max, find, max_element
@@ -37,6 +38,7 @@ public:
         , primitives::grid_t x, primitives::grid_t y, primitives::depth_t);
 
     void reset_max_segment_lengths();
+    void reset_segments();
 
     primitives::grid_t x() const { return m_x; }
     primitives::grid_t y() const { return m_y; }
@@ -53,6 +55,8 @@ public:
     // Returns the node that encompasses the circle with center x, y and radius min_radius.
     const Node* expand(primitives::space_t x, primitives::space_t y
         , primitives::space_t min_radius) const;
+    const Node* expand_simple(primitives::space_t x, primitives::space_t y
+        , primitives::space_t min_radius) const;
 
     primitives::length_t max_segment_length() const { return m_max_segment_length; }
 
@@ -62,16 +66,35 @@ public:
     void add_segment(std::vector<primitives::quadrant_t>::const_iterator next_quadrant
         , std::vector<primitives::quadrant_t>::const_iterator quadrant_end
         , primitives::length_t length);
+    void add_segment(const Segment& s, const std::vector<primitives::morton_key_t>& morton_keys);
+
     VMove search(primitives::point_id_t i
         , const std::vector<primitives::point_id_t>& next
         , const std::vector<std::array<primitives::point_id_t, 2>>& adjacents
         , const DistanceCalculator&
         , const std::vector<primitives::length_t>& next_lengths
         , primitives::length_t old_segments_length) const;
-    void search_perturbation(primitives::point_id_t i
+    VMove search(primitives::point_id_t i
         , const std::vector<primitives::point_id_t>& next
+        , const std::vector<std::array<primitives::point_id_t, 2>>& adjacents
+        , const DistanceCalculator&
+        , const std::vector<primitives::length_t>& next_lengths
+        , primitives::length_t old_segments_length
+        , const Segment& permanent_segment) const;
+
+    void search_perturbation(const primitives::point_id_t i
+        , const std::vector<primitives::point_id_t>& next
+        , const std::vector<primitives::length_t>& next_lengths
         , const DistanceCalculator& dc
-        , primitives::length_t min_old_segment_length
+        , const primitives::length_t min_adjacent_length
+        , const primitives::length_t new_adjacent_length
+        , std::vector<VMove>& perturbations) const;
+    void search_perturbation_lax(const primitives::point_id_t i
+        , const std::vector<primitives::point_id_t>& next
+        , const std::vector<primitives::length_t>& next_lengths
+        , const DistanceCalculator& dc
+        , const primitives::length_t max_adjacent_length
+        , const primitives::length_t new_adjacent_length
         , std::vector<VMove>& perturbations) const;
 
 private:

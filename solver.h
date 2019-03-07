@@ -18,71 +18,16 @@
 
 namespace solver {
 
-inline std::vector<primitives::length_t> compute_next_lengths(const DistanceCalculator& dc
-    , const std::vector<primitives::point_id_t>& next)
-{
-    std::vector<primitives::length_t> next_lengths(next.size(), 0);
-    for (size_t i {0}; i < next.size(); ++i)
-    {
-        next_lengths[i] = dc.compute_length(i, next[i]);
-    }
-    return next_lengths;
-}
-
-inline std::vector<std::array<primitives::length_t, 2>> compute_segment_lengths(
-    const DistanceCalculator& dc, const std::vector<std::array<primitives::point_id_t, 2>>& adjacent_pairs)
-{
-    std::vector<std::array<primitives::length_t, 2>> segment_lengths(adjacent_pairs.size(), {0, 0});
-    for (size_t i {0}; i < adjacent_pairs.size(); ++i)
-    {
-        segment_lengths[i][0] = dc.compute_length(i, adjacent_pairs[i][0]);
-        segment_lengths[i][1] = dc.compute_length(i, adjacent_pairs[i][1]);
-    }
-    return segment_lengths;
-}
-
-inline std::vector<const point_quadtree::Node*> get_leaf_nodes(point_quadtree::Node& root
-    , const std::vector<primitives::morton_key_t>& morton_keys
-    , const point_quadtree::Domain& domain)
-{
-    std::vector<const point_quadtree::Node*> leaf_nodes(morton_keys.size(), nullptr);
-    for (primitives::point_id_t i {0}; i < morton_keys.size(); ++i)
-    {
-        const auto node {point_quadtree::insert_point(morton_keys, i, &root, domain)};
-        leaf_nodes[i] = node;
-    }
-    check::all_true(leaf_nodes, "node assignments to every point");
-    return leaf_nodes;
-}
-
-inline void initialize_max_segment_lengths(point_quadtree::Node& root
-    , const std::vector<primitives::morton_key_t>& morton_keys
-    , const std::vector<primitives::point_id_t>& next
-    , const DistanceCalculator& dc)
-{
-    root.reset_max_segment_lengths();
-    // initial addition of segments.
-    for (primitives::point_id_t i {0}; i < next.size(); ++i)
-    {
-        const auto segment_length {dc.compute_length(i, next[i])};
-        const auto segment_insertion_path
-            {point_quadtree::morton_keys::segment_insertion_path(
-                morton_keys[i], morton_keys[next[i]])};
-        root.add_segment(std::cbegin(segment_insertion_path)
-            , std::cend(segment_insertion_path), segment_length);
-    }
-}
-
 inline void update_search_nodes(
     std::vector<const point_quadtree::Node*>& search_nodes
     , const std::vector<primitives::space_t>& x
     , const std::vector<primitives::space_t>& y
     , const std::vector<const point_quadtree::Node*>& leaf_nodes
-    , const std::vector<std::array<primitives::length_t, 2>>& segment_lengths)
+    , const std::vector<std::array<primitives::length_t, 2>>& adjacent_lengths)
 {
     for (primitives::point_id_t i {0}; i < x.size(); ++i)
     {
-        auto old_segments_length {segment_lengths[i][0] + segment_lengths[i][1]};
+        auto old_segments_length {adjacent_lengths[i][0] + adjacent_lengths[i][1]};
         search_nodes[i] = {leaf_nodes[i]->expand(x[i], y[i], old_segments_length)};
     }
 }
@@ -91,75 +36,21 @@ inline std::vector<const point_quadtree::Node*> get_search_nodes(
     const std::vector<primitives::space_t>& x
     , const std::vector<primitives::space_t>& y
     , const std::vector<const point_quadtree::Node*>& leaf_nodes
-    , const std::vector<std::array<primitives::length_t, 2>>& segment_lengths)
+    , const std::vector<std::array<primitives::length_t, 2>>& adjacent_lengths)
 {
     std::vector<const point_quadtree::Node*> search_nodes(x.size(), nullptr);
-    update_search_nodes(search_nodes, x, y, leaf_nodes, segment_lengths);
+    update_search_nodes(search_nodes, x, y, leaf_nodes, adjacent_lengths);
     return search_nodes;
-}
-
-inline std::vector<VMove> find_perturbations(const std::vector<primitives::space_t>& x
-    , const std::vector<primitives::space_t>& y
-    , const point_quadtree::Domain& domain
-    , const std::vector<primitives::point_id_t>& next
-    , const std::vector<std::array<primitives::point_id_t, 2>>& adjacents
-    , const DistanceCalculator& dc)
-{
-    const auto morton_keys {point_quadtree::morton_keys::compute_point_morton_keys(x, y, domain)};
-    point_quadtree::Node root(nullptr, domain, 0, 0, 0);
-    const auto leaf_nodes{get_leaf_nodes(root, morton_keys, domain)};
-    initialize_max_segment_lengths(root, morton_keys, next, dc);
-    const auto segment_lengths {compute_segment_lengths(dc, adjacents)};
-    const auto search_nodes {get_search_nodes(x, y, leaf_nodes, segment_lengths)};
-
-    // call search on each node.
-    std::vector<VMove> perturbations;
-    for (primitives::point_id_t i {0}; i < x.size(); ++i)
-    {
-        search_nodes[i]->search_perturbation(i, next, dc
-            , std::min(segment_lengths[i][0], segment_lengths[i][1]), perturbations);
-    }
-    return perturbations;
-}
-
-inline std::vector<VMove> find_improvements(const std::vector<primitives::space_t>& x
-    , const std::vector<primitives::space_t>& y
-    , const point_quadtree::Domain& domain
-    , const std::vector<primitives::point_id_t>& next
-    , const std::vector<std::array<primitives::point_id_t, 2>>& adjacents
-    , const DistanceCalculator& dc)
-{
-    // quadtree
-    const auto morton_keys {point_quadtree::morton_keys::compute_point_morton_keys(x, y, domain)};
-    point_quadtree::Node root(nullptr, domain, 0, 0, 0);
-    const auto leaf_nodes{get_leaf_nodes(root, morton_keys, domain)};
-    initialize_max_segment_lengths(root, morton_keys, next, dc);
-    const auto segment_lengths {compute_segment_lengths(dc, adjacents)};
-    const auto search_nodes {get_search_nodes(x, y, leaf_nodes, segment_lengths)};
-
-    // call search on each node.
-    const auto next_lengths {compute_next_lengths(dc, next)};
-    std::vector<VMove> improvements;
-    for (primitives::point_id_t i {0}; i < x.size(); ++i)
-    {
-        auto old_segments_length {segment_lengths[i][0] + segment_lengths[i][1]};
-        const auto best_improvement {search_nodes[i]->search(i
-            , next, adjacents, dc, next_lengths, old_segments_length)};
-        if (best_improvement.improvement > 0)
-        {
-            improvements.push_back(best_improvement);
-        }
-    }
-    return improvements;
 }
 
 inline VMove find_best_improvement(const std::vector<const point_quadtree::Node*>& search_nodes
     , const std::vector<primitives::point_id_t>& next
     , const std::vector<std::array<primitives::point_id_t, 2>>& adjacents
-    , const DistanceCalculator& dc)
+    , const DistanceCalculator& dc
+    , const Segment& permanent_segment = {})
 {
     // call search on each node.
-    const auto next_lengths {compute_next_lengths(dc, next)};
+    const auto next_lengths {tour::compute_next_lengths(next, dc)};
     VMove best_move;
     for (primitives::point_id_t i {0}; i < next.size(); ++i)
     {
@@ -177,9 +68,18 @@ inline VMove find_best_improvement(const std::vector<const point_quadtree::Node*
             std::cout << __func__ << ": error: inconsistency between next and adjacents" << std::endl;
             std::abort();
         }
-        const auto move {search_nodes[i]->search(i
-            , next, adjacents, dc, next_lengths, old_segments_length)};
-        best_move.apply(move);
+        if (permanent_segment.length == 0)
+        {
+            const auto move {search_nodes[i]->search(i
+                , next, adjacents, dc, next_lengths, old_segments_length)};
+            best_move.apply(move);
+        }
+        else
+        {
+            const auto move {search_nodes[i]->search(i
+                , next, adjacents, dc, next_lengths, old_segments_length, permanent_segment)};
+            best_move.apply(move);
+        }
     }
     return best_move;
 }
@@ -210,16 +110,16 @@ inline std::array<Segment, 3> compute_old_segments(const VMove& move
     }};
 }
 
-inline void remove_segment_length(std::vector<std::array<primitives::length_t, 2>>& segment_lengths
+inline void remove_segment_length(std::vector<std::array<primitives::length_t, 2>>& adjacent_lengths
     , primitives::point_id_t point, primitives::length_t length)
 {
-    if (segment_lengths[point][0] == length)
+    if (adjacent_lengths[point][0] == length)
     {
-        segment_lengths[point][0] = 0;
+        adjacent_lengths[point][0] = 0;
     }
-    else if (segment_lengths[point][1] == length)
+    else if (adjacent_lengths[point][1] == length)
     {
-        segment_lengths[point][1] = 0;
+        adjacent_lengths[point][1] = 0;
     }
     else
     {
@@ -228,7 +128,8 @@ inline void remove_segment_length(std::vector<std::array<primitives::length_t, 2
     }
 }
 
-inline void add_segment_length(std::vector<std::array<primitives::length_t, 2>>& segment_lengths
+inline void add_segment_length(
+    std::vector<std::array<primitives::length_t, 2>>& segment_lengths
     , primitives::point_id_t point, primitives::length_t length)
 {
     if (segment_lengths[point][0] == 0)
@@ -262,7 +163,39 @@ inline void update_segment_lengths(const std::array<Segment, 3>& old_segments
     }
 }
 
-inline Solution hill_climb(
+inline void apply_move(
+    std::vector<const point_quadtree::Node*>& search_nodes
+    , std::vector<std::array<primitives::length_t, 2>>& segment_lengths
+    , point_quadtree::Node& root
+    , std::vector<std::array<primitives::point_id_t, 2>>& adjacents
+    , std::vector<primitives::point_id_t>& next
+    , const VMove& move
+    , const std::vector<primitives::morton_key_t>& morton_keys
+    , const std::vector<const point_quadtree::Node*>& leaf_nodes
+    , const std::vector<primitives::space_t>& x
+    , const std::vector<primitives::space_t>& y
+    , const DistanceCalculator& dc)
+{
+    const auto old_segments {compute_old_segments(move, dc, next, adjacents)};
+    for (const auto& s : old_segments)
+    {
+        const auto segment_insertion_path {point_quadtree::morton_keys::segment_insertion_path(
+            morton_keys[s.min], morton_keys[s.max])};
+        root.remove_segment(std::cbegin(segment_insertion_path), std::cend(segment_insertion_path), s.length);
+    }
+    const auto new_segments {compute_new_segments(move, dc, next, adjacents)};
+    for (const auto& s : new_segments)
+    {
+        const auto segment_insertion_path {point_quadtree::morton_keys::segment_insertion_path(
+            morton_keys[s.min], morton_keys[s.max])};
+        root.add_segment(std::cbegin(segment_insertion_path), std::cend(segment_insertion_path), s.length);
+    }
+    update_segment_lengths(old_segments, new_segments, segment_lengths);
+    update_search_nodes(search_nodes, x, y, leaf_nodes, segment_lengths);
+    tour::apply_move(move, adjacents, next);
+}
+
+inline std::vector<primitives::point_id_t> hill_climb(
     const std::vector<primitives::point_id_t>& ordered_points
     , const std::vector<primitives::morton_key_t>& morton_keys
     , point_quadtree::Node& root
@@ -270,40 +203,158 @@ inline Solution hill_climb(
     , const std::vector<primitives::space_t>& x
     , const std::vector<primitives::space_t>& y
     , const DistanceCalculator& dc
-    )
+    , const Segment& permanent_segment = {})
 {
     auto adjacents {tour::compute_adjacents(ordered_points)};
     auto next {tour::compute_next(adjacents)};
-    initialize_max_segment_lengths(root, morton_keys, next, dc);
-    auto segment_lengths {compute_segment_lengths(dc, adjacents)};
+    auto segments {tour::compute_segments(next, dc)};
+    root.reset_segments();
+    for (const auto& s : segments)
+    {
+        root.add_segment(s, morton_keys);
+    }
+    auto segment_lengths {tour::compute_adjacent_lengths(adjacents, dc)};
     auto search_nodes {get_search_nodes(x, y, leaf_nodes, segment_lengths)};
 
+    int iteration {0};
     while (true)
     {
-        const auto best_move {find_best_improvement(search_nodes, next, adjacents, dc)};
+        const auto best_move {find_best_improvement(search_nodes, next, adjacents, dc, permanent_segment)};
         if (best_move.improvement == 0)
         {
             break;
         }
-        const auto old_segments {compute_old_segments(best_move, dc, next, adjacents)};
-        for (const auto& s : old_segments)
+
+        apply_move(search_nodes, segment_lengths, root, adjacents, next, best_move, morton_keys, leaf_nodes, x, y, dc);
+        ++iteration;
+        if (constants::verify)
         {
-            const auto segment_insertion_path {point_quadtree::morton_keys::segment_insertion_path(
-                morton_keys[s.min], morton_keys[s.max])};
-            root.remove_segment(std::cbegin(segment_insertion_path), std::cend(segment_insertion_path), s.length);
+            tour::verify(tour::compute_ordered_points(next));
         }
-        const auto new_segments {compute_new_segments(best_move, dc, next, adjacents)};
-        for (const auto& s : new_segments)
+        if (constants::print_iterations)
         {
-            const auto segment_insertion_path {point_quadtree::morton_keys::segment_insertion_path(
-                morton_keys[s.min], morton_keys[s.max])};
-            root.add_segment(std::cbegin(segment_insertion_path), std::cend(segment_insertion_path), s.length);
+            std::cout << "Iteration: " << iteration << " length: " << tour::compute_length(tour::compute_ordered_points(next), dc) << std::endl;
         }
-        update_segment_lengths(old_segments, new_segments, segment_lengths);
-        update_search_nodes(search_nodes, x, y, leaf_nodes, segment_lengths);
-        tour::apply_move(best_move, adjacents, next);
     }
-    return {tour::compute_ordered_points(next)};
+    return tour::compute_ordered_points(next);
 }
 
+inline std::vector<VMove> find_perturbations(
+    const std::vector<primitives::point_id_t>& ordered_points
+    , const std::vector<primitives::morton_key_t>& morton_keys
+    , point_quadtree::Node& root
+    , const std::vector<const point_quadtree::Node*>& leaf_nodes
+    , const std::vector<primitives::space_t>& x
+    , const std::vector<primitives::space_t>& y
+    , const DistanceCalculator& dc)
+{
+    auto adjacents {tour::compute_adjacents(ordered_points)};
+    auto next {tour::compute_next(adjacents)};
+    auto segments {tour::compute_segments(next, dc)};
+    root.reset_segments();
+    for (const auto& s : segments)
+    {
+        root.add_segment(s, morton_keys);
+    }
+    const auto segment_lengths {tour::compute_adjacent_lengths(adjacents, dc)};
+    const auto search_nodes {get_search_nodes(x, y, leaf_nodes, segment_lengths)};
+
+    // call search on each node.
+    std::vector<VMove> perturbations;
+    const auto next_lengths {tour::compute_next_lengths(next, dc)};
+    for (primitives::point_id_t i {0}; i < x.size(); ++i)
+    {
+        search_nodes[i]->search_perturbation(i
+            , next
+            , next_lengths
+            , dc
+            , std::min(segment_lengths[i][0], segment_lengths[i][1])
+            , dc.compute_length(adjacents[i][0], adjacents[i][1])
+            , perturbations);
+    }
+    return perturbations;
+}
+
+inline std::vector<primitives::point_id_t> perturbed_hill_climb(
+    const std::vector<primitives::point_id_t>& ordered_points
+    , const std::vector<primitives::morton_key_t>& morton_keys
+    , point_quadtree::Node& root
+    , const std::vector<const point_quadtree::Node*>& leaf_nodes
+    , const std::vector<primitives::space_t>& x
+    , const std::vector<primitives::space_t>& y
+    , const DistanceCalculator& dc)
+{
+    auto original_adjacents {tour::compute_adjacents(ordered_points)};
+    auto original_next {tour::compute_next(original_adjacents)};
+    auto segment_lengths {tour::compute_adjacent_lengths(original_adjacents, dc)};
+
+    // TODO: top-down root search instead of predetermined search nodes.
+    std::vector<const point_quadtree::Node*> perturbation_search_nodes(x.size(), nullptr);
+    for (primitives::point_id_t i {0}; i < x.size(); ++i)
+    {
+        auto min_segments_length {std::min(segment_lengths[i][0], segment_lengths[i][1])};
+        perturbation_search_nodes[i] = {leaf_nodes[i]->expand_simple(x[i], y[i], min_segments_length)};
+    }
+
+    std::vector<VMove> perturbations;
+    const auto next_lengths {tour::compute_next_lengths(original_next, dc)};
+    for (primitives::point_id_t i {0}; i < x.size(); ++i)
+    {
+        const auto max_adjacent_length {std::max(segment_lengths[i][0], segment_lengths[i][1])};
+        if (max_adjacent_length == 0)
+        {
+            std::cout << "zero-sized segment" << std::endl;
+            std::abort();
+        }
+        if (max_adjacent_length == 1)
+        {
+            continue;
+        }
+        perturbation_search_nodes[i]->search_perturbation_lax(i
+            , original_next
+            , next_lengths
+            , dc
+            , max_adjacent_length
+            , dc.compute_length(original_adjacents[i][0], original_adjacents[i][1])
+            , perturbations);
+    }
+
+    std::vector<primitives::point_id_t> best_solution;
+    auto best_length {tour::compute_length(ordered_points, dc)};
+    for (const auto& perturbation : perturbations)
+    {
+        const auto perturbed_points {tour::perturb(perturbation, ordered_points)};
+        const auto min_old_length
+        {
+            std::min(
+                {
+                    next_lengths[perturbation.j]
+                    , segment_lengths[perturbation.i][0]
+                    , segment_lengths[perturbation.i][1]
+                }
+            )
+        };
+        const std::array<Segment, 3> permanent_segments
+        {{
+            {perturbation.i, perturbation.j, dc}
+            , {perturbation.i, original_next[perturbation.j], dc}
+            , {original_adjacents[perturbation.i][0], original_adjacents[perturbation.i][1], dc}
+        }};
+        for (const auto& s : permanent_segments)
+        {
+            if (s.length < min_old_length)
+            {
+                auto solution = hill_climb(perturbed_points, morton_keys, root, leaf_nodes, x, y, dc, s);
+                auto length {tour::compute_length(solution, dc)};
+                if (length < best_length)
+                {
+                    best_solution = solution;
+                    best_length = length;
+                }
+            }
+        }
+    }
+    return best_solution;
+}
+nn
 } // namespace solver

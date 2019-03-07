@@ -2,6 +2,7 @@
 
 #include "Node.h"
 #include "morton_keys.h"
+#include <check.h>
 #include <primitives.h>
 
 namespace point_quadtree {
@@ -70,6 +71,20 @@ inline const Node* insert_point(const std::vector<primitives::morton_key_t>& mor
     }
     point_destination->insert(point_id);
     return point_destination;
+}
+
+inline std::vector<const point_quadtree::Node*> initialize_points(point_quadtree::Node& root
+    , const std::vector<primitives::morton_key_t>& morton_keys
+    , const point_quadtree::Domain& domain)
+{
+    std::vector<const point_quadtree::Node*> leaf_nodes(morton_keys.size(), nullptr);
+    for (primitives::point_id_t i {0}; i < morton_keys.size(); ++i)
+    {
+        const auto node {point_quadtree::insert_point(morton_keys, i, &root, domain)};
+        leaf_nodes[i] = node;
+    }
+    check::all_true(leaf_nodes, "node assignments to every point");
+    return leaf_nodes;
 }
 
 } // namespace point_quadtree
