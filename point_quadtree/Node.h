@@ -96,6 +96,13 @@ public:
         , const primitives::length_t max_adjacent_length
         , const primitives::length_t new_adjacent_length
         , std::vector<VMove>& perturbations) const;
+    void search_perturbation_lateral(const primitives::point_id_t i
+        , const std::vector<primitives::point_id_t>& next
+        , const std::vector<primitives::length_t>& next_lengths
+        , const DistanceCalculator& dc
+        , const primitives::length_t max_adjacent_length
+        , const primitives::length_t new_adjacent_length
+        , std::vector<VMove>& perturbations) const;
 
 private:
     Node* m_parent{nullptr};

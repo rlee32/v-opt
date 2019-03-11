@@ -74,7 +74,7 @@ void Node::search_perturbation(const primitives::point_id_t i
     {
         if (unique_ptr)
         {
-            unique_ptr->search_perturbation(i, next, next_lengths, dc, min_adjacent_length, new_adjacent_length, perturbations);
+            unique_ptr->search_perturbation_lax(i, next, next_lengths, dc, min_adjacent_length, new_adjacent_length, perturbations);
         }
     }
 }
@@ -114,10 +114,11 @@ void Node::search_perturbation_lax(const primitives::point_id_t i
     {
         if (unique_ptr)
         {
-            unique_ptr->search_perturbation(i, next, next_lengths, dc, max_adjacent_length, new_adjacent_length, perturbations);
+            unique_ptr->search_perturbation_lax(i, next, next_lengths, dc, max_adjacent_length, new_adjacent_length, perturbations);
         }
     }
 }
+
 VMove Node::search(primitives::point_id_t i
     , const std::vector<primitives::point_id_t>& next
     , const std::vector<std::array<primitives::point_id_t, 2>>& adjacents
@@ -159,6 +160,41 @@ VMove Node::search(primitives::point_id_t i
         }
     }
     return move;
+}
+
+void Node::search_perturbation_lateral(const primitives::point_id_t i
+    , const std::vector<primitives::point_id_t>& next
+    , const std::vector<primitives::length_t>& next_lengths
+    , const DistanceCalculator& dc
+    , const primitives::length_t old_adjacent_length
+    , const primitives::length_t new_adjacent_length
+    , std::vector<VMove>& perturbations) const
+{
+    for (auto p : m_points)
+    {
+        if (p == i or next[p] == i)
+        {
+            continue;
+        }
+        auto new_length
+        {
+            dc.compute_length(i, p)
+            + dc.compute_length(i, next[p])
+            + new_adjacent_length
+        };
+        const auto old_length = old_adjacent_length + next_lengths[p];
+        if (new_length == old_length)
+        {
+            perturbations.push_back({i, p});
+        }
+    }
+    for (const auto& unique_ptr : m_children)
+    {
+        if (unique_ptr)
+        {
+            unique_ptr->search_perturbation_lateral(i, next, next_lengths, dc, old_adjacent_length, new_adjacent_length, perturbations);
+        }
+    }
 }
 
 VMove Node::search(primitives::point_id_t i

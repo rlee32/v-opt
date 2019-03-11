@@ -10,31 +10,8 @@
 #include "point_quadtree/point_quadtree.h"
 #include "primitives.h"
 #include "solver.h"
-// #include "utility.h"
 
 #include <iostream>
-
-/*
-inline void local_stats(TourModifier& tour_modifier, const fileio::PointSet& point_set
-    , const DistanceCalculator& dc, const point_quadtree::Domain& domain)
-{
-    const auto improvements {solver::find_improvements(point_set.x(), point_set.y(), domain
-        , tour_modifier.next(), tour_modifier.adjacents(), dc)};
-    const auto perturbations {solver::find_perturbations(solution
-        , morton_keys, root, leaf_nodes, point_set.x(), point_set.y(), dc)};
-    const auto perturbations {solver::find_perturbations(point_set.x(), point_set.y(), domain
-        , tour_modifier.next(), tour_modifier.adjacents(), dc)};
-
-    if (improvements.size() > 0)
-    {
-        tour_modifier.move(improvements.front());
-        std::cout << "new tour length: " << tour_modifier.current_length(dc) << std::endl;
-    }
-    std::cout << "Found " << improvements.size() << " improvements." << std::endl;
-    std::cout << "Found " << perturbations.size() << " perturbations." << std::endl;
-    std::cout << "Search finished." << std::endl;
-}
-*/
 
 int main(int argc, const char** argv)
 {
@@ -61,25 +38,5 @@ int main(int argc, const char** argv)
     auto solution {solver::hill_climb(tour_modifier.current_tour()
         , morton_keys, root, leaf_nodes, point_set.x(), point_set.y(), dc)};
     std::cout << "local optimum: " << tour::compute_length(solution, dc) << std::endl;
-
-    while (true)
-    {
-        solution = solver::perturbed_hill_climb(solution
-            , morton_keys
-            , root
-            , leaf_nodes
-            , point_set.x()
-            , point_set.y()
-            , dc);
-        if (solution.empty())
-        {
-            break;
-        }
-        std::cout << "final optimum: " << tour::compute_length(solution, dc) << std::endl;
-        tour::verify(solution);
-    }
-
-    std::cout << "Optimization finished." << std::endl;
-
     return 0;
 }

@@ -321,8 +321,12 @@ inline std::vector<primitives::point_id_t> perturbed_hill_climb(
 
     std::vector<primitives::point_id_t> best_solution;
     auto best_length {tour::compute_length(ordered_points, dc)};
+    std::cout << "total perturbations: " << perturbations.size() << std::endl;
+    int perturbation_count {0};
     for (const auto& perturbation : perturbations)
     {
+        ++perturbation_count;
+        std::cout << "attempting perturbation " << perturbation_count << " of " << perturbations.size() << std::endl;
         const auto perturbed_points {tour::perturb(perturbation, ordered_points)};
         const auto min_old_length
         {
@@ -342,19 +346,26 @@ inline std::vector<primitives::point_id_t> perturbed_hill_climb(
         }};
         for (const auto& s : permanent_segments)
         {
-            if (s.length < min_old_length)
+            if (s.length <= min_old_length)
             {
                 auto solution = hill_climb(perturbed_points, morton_keys, root, leaf_nodes, x, y, dc, s);
+                if (solution.empty())
+                {
+                    continue;
+                }
+                solution = hill_climb(solution, morton_keys, root, leaf_nodes, x, y, dc);
                 auto length {tour::compute_length(solution, dc)};
                 if (length < best_length)
                 {
                     best_solution = solution;
                     best_length = length;
+                    return best_solution; // first_improvement.
                 }
             }
         }
     }
+    std::cout << "perturbations explored: " << perturbation_count << std::endl;
     return best_solution;
 }
-nn
+
 } // namespace solver
